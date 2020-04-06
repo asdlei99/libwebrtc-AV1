@@ -1,0 +1,40 @@
+diff --git a/media/engine/internal_decoder_factory.cc b/media/engine/internal_decoder_factory.cc
+index e68bb369b5..7fb58dd51b 100644
+--- a/media/engine/internal_decoder_factory.cc
++++ b/media/engine/internal_decoder_factory.cc
+@@ -43,13 +43,13 @@ bool IsFormatSupported(
+ std::vector<SdpVideoFormat> InternalDecoderFactory::GetSupportedFormats()
+     const {
+   std::vector<SdpVideoFormat> formats;
++  if (kIsLibaomAv1DecoderSupported)
++    formats.push_back(SdpVideoFormat(cricket::kAv1CodecName));
+   formats.push_back(SdpVideoFormat(cricket::kVp8CodecName));
+   for (const SdpVideoFormat& format : SupportedVP9Codecs())
+     formats.push_back(format);
+   for (const SdpVideoFormat& h264_format : SupportedH264Codecs())
+     formats.push_back(h264_format);
+-  if (kIsLibaomAv1DecoderSupported)
+-    formats.push_back(SdpVideoFormat(cricket::kAv1CodecName));
+   return formats;
+ }
+ 
+diff --git a/media/engine/internal_encoder_factory.cc b/media/engine/internal_encoder_factory.cc
+index aabb810283..5da395e161 100644
+--- a/media/engine/internal_encoder_factory.cc
++++ b/media/engine/internal_encoder_factory.cc
+@@ -26,13 +26,13 @@ namespace webrtc {
+ 
+ std::vector<SdpVideoFormat> InternalEncoderFactory::SupportedFormats() {
+   std::vector<SdpVideoFormat> supported_codecs;
++  if (kIsLibaomAv1EncoderSupported)
++    supported_codecs.push_back(SdpVideoFormat(cricket::kAv1CodecName));
+   supported_codecs.push_back(SdpVideoFormat(cricket::kVp8CodecName));
+   for (const webrtc::SdpVideoFormat& format : webrtc::SupportedVP9Codecs())
+     supported_codecs.push_back(format);
+   for (const webrtc::SdpVideoFormat& format : webrtc::SupportedH264Codecs())
+     supported_codecs.push_back(format);
+-  if (kIsLibaomAv1EncoderSupported)
+-    supported_codecs.push_back(SdpVideoFormat(cricket::kAv1CodecName));
+   return supported_codecs;
+ }
+ 
