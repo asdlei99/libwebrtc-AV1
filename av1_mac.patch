@@ -1,0 +1,228 @@
+diff --git a/BUILD.gn b/BUILD.gn
+index b3e771071f..dd9787a182 100644
+--- a/BUILD.gn
++++ b/BUILD.gn
+@@ -253,6 +253,10 @@ config("common_config") {
+     defines += [ "RTC_ENABLE_VP9" ]
+   }
+ 
++#  if (enable_libaom) {
++    defines += [ "ENABLE_LIBAOM" ]
++#  }
++
+   if (rtc_enable_sctp) {
+     defines += [ "HAVE_SCTP" ]
+   }
+diff --git a/media/engine/internal_decoder_factory.cc b/media/engine/internal_decoder_factory.cc
+index e68bb369b5..7fb58dd51b 100644
+--- a/media/engine/internal_decoder_factory.cc
++++ b/media/engine/internal_decoder_factory.cc
+@@ -43,13 +43,13 @@ bool IsFormatSupported(
+ std::vector<SdpVideoFormat> InternalDecoderFactory::GetSupportedFormats()
+     const {
+   std::vector<SdpVideoFormat> formats;
++  if (kIsLibaomAv1DecoderSupported)
++    formats.push_back(SdpVideoFormat(cricket::kAv1CodecName));
+   formats.push_back(SdpVideoFormat(cricket::kVp8CodecName));
+   for (const SdpVideoFormat& format : SupportedVP9Codecs())
+     formats.push_back(format);
+   for (const SdpVideoFormat& h264_format : SupportedH264Codecs())
+     formats.push_back(h264_format);
+-  if (kIsLibaomAv1DecoderSupported)
+-    formats.push_back(SdpVideoFormat(cricket::kAv1CodecName));
+   return formats;
+ }
+ 
+diff --git a/media/engine/internal_encoder_factory.cc b/media/engine/internal_encoder_factory.cc
+index aabb810283..5da395e161 100644
+--- a/media/engine/internal_encoder_factory.cc
++++ b/media/engine/internal_encoder_factory.cc
+@@ -26,13 +26,13 @@ namespace webrtc {
+ 
+ std::vector<SdpVideoFormat> InternalEncoderFactory::SupportedFormats() {
+   std::vector<SdpVideoFormat> supported_codecs;
++  if (kIsLibaomAv1EncoderSupported)
++    supported_codecs.push_back(SdpVideoFormat(cricket::kAv1CodecName));
+   supported_codecs.push_back(SdpVideoFormat(cricket::kVp8CodecName));
+   for (const webrtc::SdpVideoFormat& format : webrtc::SupportedVP9Codecs())
+     supported_codecs.push_back(format);
+   for (const webrtc::SdpVideoFormat& format : webrtc::SupportedH264Codecs())
+     supported_codecs.push_back(format);
+-  if (kIsLibaomAv1EncoderSupported)
+-    supported_codecs.push_back(SdpVideoFormat(cricket::kAv1CodecName));
+   return supported_codecs;
+ }
+ 
+diff --git a/modules/video_coding/codecs/av1/libaom_av1_decoder.cc b/modules/video_coding/codecs/av1/libaom_av1_decoder.cc
+index 122f214a5c..8f3ead82c8 100644
+--- a/modules/video_coding/codecs/av1/libaom_av1_decoder.cc
++++ b/modules/video_coding/codecs/av1/libaom_av1_decoder.cc
+@@ -100,6 +100,8 @@ int32_t LibaomAv1Decoder::Decode(const EncodedImage& encoded_image,
+     return WEBRTC_VIDEO_CODEC_UNINITIALIZED;
+   }
+ 
++  RTC_LOG(LS_WARNING) << "*********** Decode one frame AV1";
++
+   // Decode one video frame.
+   aom_codec_err_t ret =
+       aom_codec_decode(&context_, encoded_image.data(), encoded_image.size(),
+diff --git a/sdk/BUILD.gn b/sdk/BUILD.gn
+index 1b313b3d87..6115002b3c 100644
+--- a/sdk/BUILD.gn
++++ b/sdk/BUILD.gn
+@@ -624,6 +624,7 @@ if (is_ios || is_mac) {
+         ":videotoolbox_objc",
+         ":vp8",
+         ":vp9",
++        ":av1",
+         ":vpx_codec_constants",
+       ]
+     }
+@@ -676,6 +677,25 @@ if (is_ios || is_mac) {
+       ]
+     }
+ 
++    rtc_library("av1") {
++      visibility = [ "*" ]
++      allow_poison = [ "software_video_codecs" ]
++      sources = [
++        "objc/api/video_codec/RTCVideoDecoderAV1.h",
++        "objc/api/video_codec/RTCVideoDecoderAV1.mm",
++        "objc/api/video_codec/RTCVideoEncoderAV1.h",
++        "objc/api/video_codec/RTCVideoEncoderAV1.mm",
++      ]
++
++      deps = [
++        ":base_objc",
++#        ":wrapped_native_codec_objc",
++#        "../media:rtc_media_base",
++        "../modules/video_coding/codecs/av1:libaom_av1_decoder",
++        "../modules/video_coding/codecs/av1:libaom_av1_encoder",
++      ]
++    }
++
+     # Build the PeerConnectionFactory without audio/video support.
+     # This target depends on the objc_peeerconnectionfactory_base which still
+     # includes some audio/video related objects such as RTCAudioSource because
+@@ -1430,8 +1450,10 @@ if (is_ios || is_mac) {
+           "objc/api/peerconnection/RTCVideoTrack.h",
+           "objc/api/video_codec/RTCVideoDecoderVP8.h",
+           "objc/api/video_codec/RTCVideoDecoderVP9.h",
++          "objc/api/video_codec/RTCVideoDecoderAV1.h",
+           "objc/api/video_codec/RTCVideoEncoderVP8.h",
+           "objc/api/video_codec/RTCVideoEncoderVP9.h",
++          "objc/api/video_codec/RTCVideoEncoderAV1.h",
+           "objc/api/video_frame_buffer/RTCNativeI420Buffer.h",
+           "objc/api/video_frame_buffer/RTCNativeMutableI420Buffer.h",
+           "objc/base/RTCCodecSpecificInfo.h",
+diff --git a/sdk/objc/api/video_codec/RTCVideoCodecConstants.h b/sdk/objc/api/video_codec/RTCVideoCodecConstants.h
+index 03f36e22ca..b3cc30c22f 100644
+--- a/sdk/objc/api/video_codec/RTCVideoCodecConstants.h
++++ b/sdk/objc/api/video_codec/RTCVideoCodecConstants.h
+@@ -14,3 +14,4 @@
+ 
+ RTC_OBJC_EXPORT extern NSString* const kRTCVideoCodecVp8Name;
+ RTC_OBJC_EXPORT extern NSString* const kRTCVideoCodecVp9Name;
++RTC_OBJC_EXPORT extern NSString* const kRTCVideoCodecAv1Name;
+diff --git a/sdk/objc/api/video_codec/RTCVideoCodecConstants.mm b/sdk/objc/api/video_codec/RTCVideoCodecConstants.mm
+index 3de6e22ef7..1ab236a2c2 100644
+--- a/sdk/objc/api/video_codec/RTCVideoCodecConstants.mm
++++ b/sdk/objc/api/video_codec/RTCVideoCodecConstants.mm
+@@ -15,3 +15,4 @@
+ 
+ NSString *const kRTCVideoCodecVp8Name = @(cricket::kVp8CodecName);
+ NSString *const kRTCVideoCodecVp9Name = @(cricket::kVp9CodecName);
++NSString *const kRTCVideoCodecAv1Name = @(cricket::kAv1CodecName);
+diff --git a/sdk/objc/components/video_codec/RTCDefaultVideoDecoderFactory.m b/sdk/objc/components/video_codec/RTCDefaultVideoDecoderFactory.m
+index 44445f4b13..ef905a3717 100644
+--- a/sdk/objc/components/video_codec/RTCDefaultVideoDecoderFactory.m
++++ b/sdk/objc/components/video_codec/RTCDefaultVideoDecoderFactory.m
+@@ -18,6 +18,9 @@
+ #if defined(RTC_ENABLE_VP9)
+ #import "api/video_codec/RTCVideoDecoderVP9.h"
+ #endif
++#if defined(ENABLE_LIBAOM)
++#import "api/video_codec/RTCVideoDecoderAV1.h"
++#endif
+ 
+ @implementation RTCDefaultVideoDecoderFactory
+ 
+@@ -46,7 +49,14 @@ @implementation RTCDefaultVideoDecoderFactory
+   RTCVideoCodecInfo *vp9Info = [[RTCVideoCodecInfo alloc] initWithName:kRTCVideoCodecVp9Name];
+ #endif
+ 
++#if defined(ENABLE_LIBAOM)
++  RTCVideoCodecInfo *av1Info = [[RTCVideoCodecInfo alloc] initWithName:kRTCVideoCodecAv1Name];
++#endif
++
+   return @[
++#if defined(ENABLE_LIBAOM)
++    av1Info,
++#endif
+     constrainedHighInfo,
+     constrainedBaselineInfo,
+     vp8Info,
+@@ -64,6 +74,10 @@ @implementation RTCDefaultVideoDecoderFactory
+ #if defined(RTC_ENABLE_VP9)
+   } else if ([info.name isEqualToString:kRTCVideoCodecVp9Name]) {
+     return [RTCVideoDecoderVP9 vp9Decoder];
++#endif
++#if defined(ENABLE_LIBAOM)
++  } else if ([info.name isEqualToString:kRTCVideoCodecAv1Name]) {
++    return [RTCVideoDecoderAV1 av1Decoder];
+ #endif
+   }
+ 
+diff --git a/sdk/objc/components/video_codec/RTCDefaultVideoEncoderFactory.m b/sdk/objc/components/video_codec/RTCDefaultVideoEncoderFactory.m
+index b72296b64f..7adf595650 100644
+--- a/sdk/objc/components/video_codec/RTCDefaultVideoEncoderFactory.m
++++ b/sdk/objc/components/video_codec/RTCDefaultVideoEncoderFactory.m
+@@ -18,6 +18,9 @@
+ #if defined(RTC_ENABLE_VP9)
+ #import "api/video_codec/RTCVideoEncoderVP9.h"
+ #endif
++#if defined(ENABLE_LIBAOM)
++#import "api/video_codec/RTCVideoEncoderAV1.h"
++#endif
+ 
+ @implementation RTCDefaultVideoEncoderFactory
+ 
+@@ -48,7 +51,14 @@ @implementation RTCDefaultVideoEncoderFactory
+   RTCVideoCodecInfo *vp9Info = [[RTCVideoCodecInfo alloc] initWithName:kRTCVideoCodecVp9Name];
+ #endif
+ 
++#if defined(ENABLE_LIBAOM)
++  RTCVideoCodecInfo *av1Info = [[RTCVideoCodecInfo alloc] initWithName:kRTCVideoCodecAv1Name];
++#endif
++
+   return @[
++#if defined(ENABLE_LIBAOM)
++    av1Info,
++#endif
+     constrainedHighInfo,
+     constrainedBaselineInfo,
+     vp8Info,
+@@ -66,6 +76,10 @@ @implementation RTCDefaultVideoEncoderFactory
+ #if defined(RTC_ENABLE_VP9)
+   } else if ([info.name isEqualToString:kRTCVideoCodecVp9Name]) {
+     return [RTCVideoEncoderVP9 vp9Encoder];
++#endif
++#if defined(ENABLE_LIBAOM)
++  } else if ([info.name isEqualToString:kRTCVideoCodecAv1Name]) {
++    return [RTCVideoEncoderAV1 av1Encoder];
+ #endif
+   }
+ 
+diff --git a/sdk/objc/native/src/objc_video_encoder_factory.mm b/sdk/objc/native/src/objc_video_encoder_factory.mm
+index b0c7c2c5f1..1360c550a4 100644
+--- a/sdk/objc/native/src/objc_video_encoder_factory.mm
++++ b/sdk/objc/native/src/objc_video_encoder_factory.mm
+@@ -146,7 +146,7 @@ void SetRates(const RateControlParameters &parameters) override {
+   // TODO(andersc): This is a hack until we figure out how this should be done properly.
+   NSString *formatName = [NSString stringForStdString:format.name];
+   NSSet *wrappedSoftwareFormats =
+-      [NSSet setWithObjects:kRTCVideoCodecVp8Name, kRTCVideoCodecVp9Name, nil];
++      [NSSet setWithObjects:kRTCVideoCodecAv1Name, kRTCVideoCodecVp8Name, kRTCVideoCodecVp9Name, nil];
+ 
+   CodecInfo codec_info;
+   codec_info.is_hardware_accelerated = ![wrappedSoftwareFormats containsObject:formatName];
