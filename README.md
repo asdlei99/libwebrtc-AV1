@@ -3,6 +3,9 @@ whose original README can be read below.
 
 [For more information on this fork, please see the wiki section.](https://github.com/CoSMoSoftware/libwebrtc-AV1/wiki)
 
+
+-----------------------------------------------------------------
+
 **WebRTC is a free, open software project** that provides browsers and mobile
 applications with Real-Time Communications (RTC) capabilities via simple APIs.
 The WebRTC components have been optimized to best serve this purpose.
